@@ -598,6 +598,10 @@ static void mut_relief_optimistic(app_state_t *st, void *arg)
     zs->relief_heat        = o->heat;
     zs->relief_end_ms      = o->end_ms;
     zs->relief_prev_temp_c = o->prev_temp_c;
+    if (o->active) {
+        zs->temp_c = o->prev_temp_c;
+        st->ui_temp_f[o->zone] = -1;
+    }
     zs->relief_opt_us      = o->optimistic ? esp_timer_get_time() : 0;
 }
 
