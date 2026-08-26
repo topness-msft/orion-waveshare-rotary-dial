@@ -1450,7 +1450,7 @@ static void handle_immediate_cmd(const app_cmd_t *cmd, const oauth_disc_t *disc,
         // failure below, revert to exactly what was showing before the tap.
         app_state_t pre;
         dial_state_get(&pre);
-        bool have_prev_temp = cmd->temp_f >= DIAL_TEMP_MIN_F && cmd->temp_f <= DIAL_TEMP_MAX_F;
+        bool have_prev_temp = dial_temp_f_valid(cmd->temp_f);
         bool ok_to_boost = true;
         if (have_prev_temp && dial_c_to_f(pre.zones[cmd->zone].temp_c) != cmd->temp_f) {
             set_temp_args_t restore = { cmd->zone, dial_f_to_c(cmd->temp_f), false };
@@ -1885,7 +1885,7 @@ static void worker_task(void *arg)
             // temp_f. Do not write the rail setpoint first; that would become
             // Orion's thermal-relief previous_temp.
             if (have_pending && pending.kind == CMD_BOOST_START &&
-                pending.temp_f >= DIAL_TEMP_MIN_F && pending.temp_f <= DIAL_TEMP_MAX_F)
+                dial_temp_f_valid(pending.temp_f))
                 last_temp[pending.zone] = -1;
 
             // Stamped BEFORE the writes: anything the user does during the

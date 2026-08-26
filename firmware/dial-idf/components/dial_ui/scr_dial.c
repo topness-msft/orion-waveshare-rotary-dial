@@ -1419,6 +1419,7 @@ static bool on_knob(int detents)
         return true;
     }
 
+    int pre_f = s_shown_f;
     int dir = detents > 0 ? 1 : -1;
     uint32_t now_ms = lv_tick_get();
     if (s_knob_seq_start_f < 0 || s_knob_seq_dir != dir ||
@@ -1452,8 +1453,7 @@ static bool on_knob(int detents)
     }
     if (rail_boost) {
         bool heat = dir > 0;
-        int prev_f = (s_knob_seq_start_f >= s_arc_min && s_knob_seq_start_f <= s_arc_max)
-                     ? s_knob_seq_start_f : s_shown_f;
+        int prev_f = dial_temp_f_valid(s_knob_seq_start_f) ? s_knob_seq_start_f : pre_f;
         dial_haptics_play(HAPTIC_CONFIRM);
         dial_state_set_relief_optimistic_prev_f(
             s_zone, true, heat,

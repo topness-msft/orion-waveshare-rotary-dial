@@ -50,6 +50,7 @@ typedef enum { ZONE_A = 0, ZONE_B = 1, ZONE_COUNT = 2 } zone_idx_t;
 #define DIAL_TEMP_MIN_F 50
 #define DIAL_TEMP_MAX_F 113
 
+static inline bool  dial_temp_f_valid(int f) { return f >= DIAL_TEMP_MIN_F && f <= DIAL_TEMP_MAX_F; }
 static inline int   dial_c_to_f(float c) { return (int)lroundf(c * 1.8f + 32.0f); }
 static inline float dial_f_to_c(int f)   { return roundf(((f - 32) / 1.8f) * 10.0f) / 10.0f; }
 
