@@ -23,6 +23,7 @@ LV_FONT_DECLARE(dial_font_num_88)
 #define ARC_R 165
 #define RAIL_BOOST_MINUTES 30
 #define RAIL_BOOST_SEQ_MS 1500
+#define MS_PER_MINUTE 60000
 
 static lv_obj_t *s_arc;
 static lv_obj_t *s_stale_dot;
@@ -1456,7 +1457,7 @@ static bool on_knob(int detents)
         dial_haptics_play(HAPTIC_CONFIRM);
         dial_state_set_relief_optimistic_prev_f(
             s_zone, true, heat,
-            (int64_t)time(NULL) * 1000 + (int64_t)RAIL_BOOST_MINUTES * 60000,
+            (int64_t)time(NULL) * 1000 + (int64_t)RAIL_BOOST_MINUTES * MS_PER_MINUTE,
             prev_f);
         app_cmd_t cmd = { .kind = CMD_BOOST_START, .zone = s_zone,
                           .temp_f = prev_f, .a = heat ? 1 : 0,

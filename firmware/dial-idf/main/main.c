@@ -594,11 +594,13 @@ static void mut_relief_optimistic(app_state_t *st, void *arg)
 {
     relief_optimistic_t *o = arg;
     zone_state_t *zs = &st->zones[o->zone];
+    bool starting = o->active && !zs->relief_active;
     zs->relief_active      = o->active;
     zs->relief_heat        = o->heat;
     zs->relief_end_ms      = o->end_ms;
-    zs->relief_prev_temp_c = o->prev_temp_c;
-    if (o->active) {
+    if (starting || !o->active)
+        zs->relief_prev_temp_c = o->prev_temp_c;
+    if (starting) {
         zs->temp_c = o->prev_temp_c;
         st->ui_temp_f[o->zone] = -1;
     }
