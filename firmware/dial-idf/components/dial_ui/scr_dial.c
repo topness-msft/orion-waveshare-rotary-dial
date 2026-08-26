@@ -14,7 +14,6 @@
 #include "dial_icons.h"
 #include <math.h>
 #include <time.h>
-#include "esp_timer.h"
 
 LV_FONT_DECLARE(dial_font_num_88)
 
@@ -23,7 +22,7 @@ LV_FONT_DECLARE(dial_font_num_88)
                  // screen's center and offset by (x-CX, y-CY).
 #define ARC_R 165
 #define RAIL_BOOST_MINUTES 30
-#define RAIL_BOOST_SEQ_US 1500000
+#define RAIL_BOOST_SEQ_MS 1500
 
 static lv_obj_t *s_arc;
 static lv_obj_t *s_stale_dot;
@@ -122,7 +121,7 @@ static int  s_press_f;
 // -10/+10 does not become the boost's return temperature.
 static int     s_knob_seq_start_f = -1;
 static int     s_knob_seq_dir;
-static int64_t s_knob_seq_us;
+static uint32_t s_knob_seq_ms;
 
 // Chevron pulse (design-spec.md §6): only running while heating/cooling, and
 // only restarted when that changes or the day/night duration changes.
@@ -897,7 +896,7 @@ static void create(lv_obj_t *scr, void *arg)
     s_shown_f = -1;
     s_knob_seq_start_f = -1;
     s_knob_seq_dir = 0;
-    s_knob_seq_us = 0;
+    s_knob_seq_ms = 0;
     s_chevron_active = false;
     s_stale_shown = false;
     s_units_c = false;   // on_state (called right after create) sets the real value
@@ -1336,7 +1335,7 @@ static void destroy(void)
     s_dragging = false;
     s_knob_seq_start_f = -1;
     s_knob_seq_dir = 0;
-    s_knob_seq_us = 0;
+    s_knob_seq_ms = 0;
     s_arc = s_stale_dot = s_name_lbl = NULL;
     s_underline_solid = s_underline_dash = s_water_lbl = NULL;
     s_num_box = s_temp_lbl = s_unit_lbl = NULL;
@@ -1420,13 +1419,13 @@ static bool on_knob(int detents)
     }
 
     int dir = detents > 0 ? 1 : -1;
-    int64_t now_us = esp_timer_get_time();
+    uint32_t now_ms = lv_tick_get();
     if (s_knob_seq_start_f < 0 || s_knob_seq_dir != dir ||
-        now_us - s_knob_seq_us > RAIL_BOOST_SEQ_US) {
+        (uint32_t)(now_ms - s_knob_seq_ms) > RAIL_BOOST_SEQ_MS) {
         s_knob_seq_start_f = s_shown_f;
         s_knob_seq_dir = dir;
     }
-    s_knob_seq_us = now_us;
+    s_knob_seq_ms = now_ms;
 
     // Relative: one detent = exactly one level in the turned direction, from
     // whatever level is displayed (dial_rel_step snaps an off-grid value onto

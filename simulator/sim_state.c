@@ -108,12 +108,20 @@ void dial_state_set_rel_mode(bool rel_mode)
     s_state.generation++;
 }
 
-// Optimistic relief write: the simulator has no worker to reconcile against,
-// so this just mutates the store the same way the firmware's does.
-void dial_state_set_relief_optimistic(int zone, bool active, bool heat, int64_t end_ms)
+static void set_relief_optimistic(int zone, bool active, bool heat, int64_t end_ms,
+                                  bool have_prev_temp, float prev_temp_c)
 {
     for (int z = 0; z < ZONE_COUNT; z++) {
         if (zone >= 0 && z != zone) continue;
+        if (active && !s_state.zones[z].relief_active) {
+            s_state.zones[z].relief_prev_on = s_state.zones[z].on;
+            s_state.zones[z].relief_prev_temp_c = have_prev_temp ? prev_temp_c
+                                                                  : s_state.zones[z].temp_c;
+            if (have_prev_temp) {
+                s_state.zones[z].temp_c = prev_temp_c;
+                s_state.ui_temp_f[z] = -1;
+            }
+        }
         if (!active && s_state.zones[z].relief_active) {
             s_state.zones[z].on     = s_state.zones[z].relief_prev_on;
             s_state.zones[z].temp_c = s_state.zones[z].relief_prev_temp_c;
@@ -123,6 +131,19 @@ void dial_state_set_relief_optimistic(int zone, bool active, bool heat, int64_t 
         s_state.zones[z].relief_end_ms = active ? end_ms : 0;
     }
     s_state.generation++;
+}
+
+// Optimistic relief write: the simulator has no worker to reconcile against,
+// so this just mutates the store the same way the firmware's does.
+void dial_state_set_relief_optimistic(int zone, bool active, bool heat, int64_t end_ms)
+{
+    set_relief_optimistic(zone, active, heat, end_ms, false, 0.0f);
+}
+
+void dial_state_set_relief_optimistic_prev_f(int zone, bool active, bool heat,
+                                             int64_t end_ms, int prev_temp_f)
+{
+    set_relief_optimistic(zone, active, heat, end_ms, true, dial_f_to_c(prev_temp_f));
 }
 
 void dial_state_set_haptics_level(uint8_t level)
