@@ -14,6 +14,7 @@
 #include "dial_icons.h"
 #include <math.h>
 #include <time.h>
+#include "esp_timer.h"
 
 LV_FONT_DECLARE(dial_font_num_88)
 
@@ -21,6 +22,8 @@ LV_FONT_DECLARE(dial_font_num_88)
 #define CY 180   // given as an absolute (x,y); we align everything to the
                  // screen's center and offset by (x-CX, y-CY).
 #define ARC_R 165
+#define RAIL_BOOST_MINUTES 30
+#define RAIL_BOOST_SEQ_US 1500000
 
 static lv_obj_t *s_arc;
 static lv_obj_t *s_stale_dot;
@@ -113,6 +116,13 @@ static int s_arc_min = -1, s_arc_max = -1;
 // nothing.
 static bool s_dragging;
 static int  s_press_f;
+
+// Over-rotating past either temperature rail starts the matching boost. Keep
+// the setpoint from the start of the railward spin so the required scroll to
+// -10/+10 does not become the boost's return temperature.
+static int     s_knob_seq_start_f = -1;
+static int     s_knob_seq_dir;
+static int64_t s_knob_seq_us;
 
 // Chevron pulse (design-spec.md §6): only running while heating/cooling, and
 // only restarted when that changes or the day/night duration changes.
@@ -743,6 +753,8 @@ static void handle_event_cb(lv_event_t *e)
 
     if (code == LV_EVENT_PRESSED) {
         if (s_relief_active) return;      // handle is inert during a boost, like the knob
+        s_knob_seq_start_f = -1;
+        s_knob_seq_dir = 0;
         s_dragging = true;
         s_press_f = s_shown_f;
         dial_state_stamp_input();
@@ -883,6 +895,9 @@ static void create(lv_obj_t *scr, void *arg)
 {
     s_zone = (zone_idx_t)(uintptr_t)arg;
     s_shown_f = -1;
+    s_knob_seq_start_f = -1;
+    s_knob_seq_dir = 0;
+    s_knob_seq_us = 0;
     s_chevron_active = false;
     s_stale_shown = false;
     s_units_c = false;   // on_state (called right after create) sets the real value
@@ -1319,6 +1334,9 @@ static void destroy(void)
     s_zero_notch = NULL;
     s_handle = NULL;
     s_dragging = false;
+    s_knob_seq_start_f = -1;
+    s_knob_seq_dir = 0;
+    s_knob_seq_us = 0;
     s_arc = s_stale_dot = s_name_lbl = NULL;
     s_underline_solid = s_underline_dash = s_water_lbl = NULL;
     s_num_box = s_temp_lbl = s_unit_lbl = NULL;
@@ -1401,6 +1419,15 @@ static bool on_knob(int detents)
         return true;
     }
 
+    int dir = detents > 0 ? 1 : -1;
+    int64_t now_us = esp_timer_get_time();
+    if (s_knob_seq_start_f < 0 || s_knob_seq_dir != dir ||
+        now_us - s_knob_seq_us > RAIL_BOOST_SEQ_US) {
+        s_knob_seq_start_f = s_shown_f;
+        s_knob_seq_dir = dir;
+    }
+    s_knob_seq_us = now_us;
+
     // Relative: one detent = exactly one level in the turned direction, from
     // whatever level is displayed (dial_rel_step snaps an off-grid value onto
     // the grid as it moves, so the numeral and the bed always move together).
@@ -1410,16 +1437,38 @@ static bool on_knob(int detents)
     // runs when s_rel is false (so s_arc_min/max already hold the absolute
     // range, not the relative one).
     int nf;
+    bool rail_boost;
     if (s_rel) {
+        int cur = dial_rel_from_f(s_shown_f);
+        int raw = cur + detents;
+        rail_boost = raw < DIAL_REL_MIN || raw > DIAL_REL_MAX;
         nf = dial_rel_step(s_shown_f, detents);
     } else {
-        nf = s_shown_f + detents;
+        int raw = s_shown_f + detents;
+        rail_boost = raw < s_arc_min || raw > s_arc_max;
+        nf = raw;
         if (nf < s_arc_min) nf = s_arc_min;
         if (nf > s_arc_max) nf = s_arc_max;
     }
+    if (rail_boost) {
+        bool heat = dir > 0;
+        int prev_f = (s_knob_seq_start_f >= s_arc_min && s_knob_seq_start_f <= s_arc_max)
+                     ? s_knob_seq_start_f : s_shown_f;
+        dial_haptics_play(HAPTIC_CONFIRM);
+        dial_state_set_relief_optimistic_prev_f(
+            s_zone, true, heat,
+            (int64_t)time(NULL) * 1000 + (int64_t)RAIL_BOOST_MINUTES * 60000,
+            prev_f);
+        app_cmd_t cmd = { .kind = CMD_BOOST_START, .zone = s_zone,
+                          .temp_f = prev_f, .a = heat ? 1 : 0,
+                          .b = RAIL_BOOST_MINUTES };
+        dial_cmd_post(&cmd);
+        s_knob_seq_start_f = -1;
+        s_knob_seq_dir = 0;
+        return true;
+    }
     if (nf == s_shown_f) {                          // pinned at the range stop
         dial_haptics_play_soft(HAPTIC_STOP);
-        int dir = detents > 0 ? 1 : -1;
         anim_nudge(s_num_box, dir);
         anim_nudge(s_arc, dir);
         return true;

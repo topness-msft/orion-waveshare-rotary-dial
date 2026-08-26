@@ -1444,15 +1444,27 @@ static void handle_immediate_cmd(const app_cmd_t *cmd, const oauth_disc_t *disc,
         // failure below, revert to exactly what was showing before the tap.
         app_state_t pre;
         dial_state_get(&pre);
+        bool have_prev_temp = cmd->temp_f >= DIAL_TEMP_MIN_F && cmd->temp_f <= DIAL_TEMP_MAX_F;
+        bool ok_to_boost = true;
+        if (have_prev_temp && dial_c_to_f(pre.zones[cmd->zone].temp_c) != cmd->temp_f) {
+            set_temp_args_t restore = { cmd->zone, dial_f_to_c(cmd->temp_f), false };
+            ok_to_boost = with_auth_retry(orion_set_temp, &restore, disc, client_id);
+            if (ok_to_boost) {
+                zone_temp_t up = { cmd->zone, restore.temp_c, esp_timer_get_time() };
+                dial_state_commit(mut_zone_temp, &up);
+                if (restore.used_override)
+                    with_auth_retry(sched_call, NULL, disc, client_id);
+            }
+        }
         relief_optimistic_t opt = {
             .zone = cmd->zone, .active = true, .heat = b.heat,
             .end_ms = (int64_t)time(NULL) * 1000 + (int64_t)b.minutes * 60000,
-            .prev_temp_c = pre.zones[cmd->zone].temp_c,
+            .prev_temp_c = have_prev_temp ? dial_f_to_c(cmd->temp_f) : pre.zones[cmd->zone].temp_c,
             .optimistic = true,
         };
         dial_state_commit(mut_relief_optimistic, &opt);
 
-        if (!with_auth_retry(orion_boost, &b, disc, client_id)) {
+        if (!ok_to_boost || !with_auth_retry(orion_boost, &b, disc, client_id)) {
             relief_optimistic_t revert = {
                 .zone = cmd->zone,
                 .active = pre.zones[cmd->zone].relief_active,
@@ -1862,6 +1874,13 @@ static void worker_task(void *arg)
                 else if (cmd.kind == CMD_TOGGLE_ON) want_on[cmd.zone] = cmd.a ? 1 : 0;
                 else { have_pending = true; pending = cmd; break; }
             } while (dial_cmd_receive(&cmd, 0));
+
+            // Rail-overturn boost carries the pre-scroll return temperature in
+            // temp_f. Do not write the rail setpoint first; that would become
+            // Orion's thermal-relief previous_temp.
+            if (have_pending && pending.kind == CMD_BOOST_START &&
+                pending.temp_f >= DIAL_TEMP_MIN_F && pending.temp_f <= DIAL_TEMP_MAX_F)
+                last_temp[pending.zone] = -1;
 
             // Stamped BEFORE the writes: anything the user does during the
             // round trip is newer than this batch, and must not be undone by

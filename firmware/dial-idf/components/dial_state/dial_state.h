@@ -644,6 +644,11 @@ void dial_state_set_haptics_level(uint8_t level);
 // own commit then reconciles, and reverts if the call fails.
 // zone < 0 applies to every zone (cancel_thermal_relief is device-wide).
 void dial_state_set_relief_optimistic(int zone, bool active, bool heat, int64_t end_ms);
+// Same optimistic boost write, but with an explicit return target. Used by the
+// rail-overturn shortcut so the scroll down/up to the rail does not become the
+// temperature the boost restores.
+void dial_state_set_relief_optimistic_prev_f(int zone, bool active, bool heat,
+                                             int64_t end_ms, int prev_temp_f);
 
 // Day/night backlight brightness preference, 10..100 (percent, 10% steps).
 // Getters always return a value in that range (clamped on read; 100 when no
@@ -763,7 +768,7 @@ typedef enum {
 typedef struct {
     cmd_kind_t kind;
     zone_idx_t zone;
-    int        temp_f;  // CMD_SET_TEMP
+    int        temp_f;  // CMD_SET_TEMP; CMD_BOOST_START optional pre-rail return temp
     int        a, b;    // generic args: CMD_BOOST_START (a=heat, b=minutes),
                          // CMD_AWAY (a=away)
 } app_cmd_t;
