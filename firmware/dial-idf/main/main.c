@@ -1468,7 +1468,8 @@ static void handle_immediate_cmd(const app_cmd_t *cmd, const oauth_disc_t *disc,
             .prev_temp_c = have_prev_temp ? dial_f_to_c(cmd->temp_f) : pre.zones[cmd->zone].temp_c,
             .optimistic = true,
         };
-        dial_state_commit(mut_relief_optimistic, &opt);
+        if (ok_to_boost)
+            dial_state_commit(mut_relief_optimistic, &opt);
 
         if (!ok_to_boost || !with_auth_retry(orion_boost, &b, disc, client_id)) {
             relief_optimistic_t revert = {
