@@ -1426,7 +1426,6 @@ static bool on_knob(int detents)
         (uint32_t)(now_ms - s_knob_seq_ms) > RAIL_BOOST_SEQ_MS) {
         s_knob_seq_start_f = s_shown_f;
         s_knob_seq_dir = dir;
-        s_knob_seq_ms = now_ms;
     }
     s_knob_seq_ms = now_ms;
 

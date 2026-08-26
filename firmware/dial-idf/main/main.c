@@ -1450,6 +1450,8 @@ static void handle_immediate_cmd(const app_cmd_t *cmd, const oauth_disc_t *disc,
         // failure below, revert to exactly what was showing before the tap.
         app_state_t pre;
         dial_state_get(&pre);
+        bool pre_is_this_optimistic = pre.zones[cmd->zone].relief_active &&
+                                      pre.zones[cmd->zone].relief_opt_us != 0;
         bool have_prev_temp = dial_temp_f_valid(cmd->temp_f);
         bool ok_to_boost = true;
         if (have_prev_temp && dial_c_to_f(pre.zones[cmd->zone].temp_c) != cmd->temp_f) {
@@ -1474,9 +1476,9 @@ static void handle_immediate_cmd(const app_cmd_t *cmd, const oauth_disc_t *disc,
         if (!ok_to_boost || !with_auth_retry(orion_boost, &b, disc, client_id)) {
             relief_optimistic_t revert = {
                 .zone = cmd->zone,
-                .active = false,
-                .heat = false,
-                .end_ms = 0,
+                .active = pre_is_this_optimistic ? false : pre.zones[cmd->zone].relief_active,
+                .heat = pre_is_this_optimistic ? false : pre.zones[cmd->zone].relief_heat,
+                .end_ms = pre_is_this_optimistic ? 0 : pre.zones[cmd->zone].relief_end_ms,
                 .prev_temp_c = have_prev_temp ? dial_f_to_c(cmd->temp_f) : pre.zones[cmd->zone].temp_c,
                 .optimistic = false,
             };
